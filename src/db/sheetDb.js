@@ -99,15 +99,27 @@ export const fetchCloudTasks = async (url) => {
     throw new Error(result.message || "Failed to fetch cloud tasks");
   }
   
-  // Format dates and prioritize clean data types; ensure userName exists for legacy rows
+  const isIsoDateLike = (value) => {
+    if (!value) return false;
+    const parsed = Date.parse(value);
+    return !Number.isNaN(parsed);
+  };
+
+  // Format dates and prioritize clean data types; ensure userName exists for legacy rows.
+  // Some older Sheets had userName appended after date columns. In that case Apps Script
+  // could return userName as a timestamp and createdAt as the author, so repair it here.
   return (result.data || []).map(task => ({
     id: task.id,
     heading: task.heading || '',
     details: task.details || '',
     timeTaken: parseFloat(task.timeTaken) || 0,
     importLevel: task.importLevel || 'Medium',
-    userName: task.userName || task.user || 'System/Legacy',
-    createdAt: task.createdAt || new Date().toISOString(),
+    userName: isIsoDateLike(task.userName) && task.createdAt && !isIsoDateLike(task.createdAt)
+      ? task.createdAt
+      : task.userName || task.user || 'System/Legacy',
+    createdAt: isIsoDateLike(task.userName) && task.createdAt && !isIsoDateLike(task.createdAt)
+      ? task.userName
+      : task.createdAt || new Date().toISOString(),
     updatedAt: task.updatedAt || task.createdAt || new Date().toISOString()
   }));
 };

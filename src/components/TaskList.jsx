@@ -1,6 +1,9 @@
 import { useState, useMemo } from 'react';
 
 const PRIORITY_ORDER = { 'High': 3, 'Medium': 2, 'Low': 1 };
+const namesMatch = (left, right) => {
+  return (left || '').trim().toLowerCase() === (right || '').trim().toLowerCase();
+};
 
 export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUser }) {
   const [searchText, setSearchText] = useState('');
@@ -65,7 +68,7 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
   const visibleTasks = useMemo(() => {
     let base = tasks || [];
     if (currentUser.role !== 'Supreme') {
-      base = base.filter(t => (t.userName || '').toLowerCase() === (currentUser.name || '').toLowerCase());
+      base = base.filter(t => namesMatch(t.userName, currentUser.name));
     }
     // Apply team filter (only applicable to Supreme)
     if (teamFilter && teamFilter !== 'All') {
@@ -185,7 +188,7 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
           {sortedTasks.map(task => {
             const isEditing = editingId === task.id;
             const priorityClass = (task.importLevel || 'Medium').toLowerCase();
-            const isAuthor = (task.userName || '').toLowerCase() === (currentUser.name || '').toLowerCase();
+            const isAuthor = namesMatch(task.userName, currentUser.name);
             const canEdit = currentUser.role === 'Supreme' || isAuthor;
             const canDelete = currentUser.role === 'Supreme' || isAuthor;
             

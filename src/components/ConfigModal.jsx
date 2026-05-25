@@ -55,6 +55,11 @@ function rowsToObjects(sheet, headers) {
   });
 }
 
+function appendObjectRow(sheet, headers, data) {
+  const rowData = headers.map(header => data[header] !== undefined ? data[header] : '');
+  sheet.appendRow(rowData);
+}
+
 function hashPassword(password, salt) {
   const digest = Utilities.computeDigest(
     Utilities.DigestAlgorithm.SHA_256,
@@ -152,18 +157,19 @@ function doPost(e) {
 
     if (action === 'create') {
       const id = 'task_' + new Date().getTime() + '_' + Math.random().toString(36).substr(2, 9);
-      const rowData = [
-        id,
-        postData.heading || '',
-        postData.details || '',
-        parseFloat(postData.timeTaken) || 0,
-        postData.importLevel || 'Medium',
-        postData.userName || 'Anonymous', // Brand new user identity stamp
-        new Date().toISOString(),
-        new Date().toISOString()
-      ];
-      sheet.appendRow(rowData);
-      return jsonResponse({ status: "success", data: { id: id } });
+      const now = new Date().toISOString();
+      const taskData = {
+        id: id,
+        heading: postData.heading || '',
+        details: postData.details || '',
+        timeTaken: parseFloat(postData.timeTaken) || 0,
+        importLevel: postData.importLevel || 'Medium',
+        userName: postData.userName || 'Anonymous',
+        createdAt: now,
+        updatedAt: now
+      };
+      appendObjectRow(sheet, headers, taskData);
+      return jsonResponse({ status: "success", data: taskData });
         
     } else if (action === 'update') {
       const id = postData.id;
