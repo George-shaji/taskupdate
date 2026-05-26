@@ -1,18 +1,21 @@
 import { useState, useMemo } from 'react';
 
 const PRIORITY_ORDER = { 'High': 3, 'Medium': 2, 'Low': 1 };
+const CODE_LOCATIONS = ['Local', 'Dev', 'Pre', 'Prod'];
 const namesMatch = (left, right) => {
   return (left || '').trim().toLowerCase() === (right || '').trim().toLowerCase();
 };
 
-export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUser }) {
+export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTaskUpdate, currentUser }) {
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [activeSort, setActiveSort] = useState('newest');
   const [teamFilter, setTeamFilter] = useState('All');
+  const [sendingWebhookId, setSendingWebhookId] = useState(null);
   
   // Inline edit state
   const [editingId, setEditingId] = useState(null);
+  const [editProjectName, setEditProjectName] = useState('');
   const [editHeading, setEditHeading] = useState('');
   const [editDetails, setEditDetails] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -20,6 +23,7 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
 
   const startEditing = (task) => {
     setEditingId(task.id);
+    setEditProjectName(task.projectName || '');
     setEditHeading(task.heading);
     setEditDetails(task.details);
     setEditTime(task.timeTaken.toString());
@@ -31,9 +35,10 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
   };
 
   const saveEdit = (id) => {
-    if (!editHeading.trim()) return;
+    if (!editProjectName.trim() || !editHeading.trim()) return;
     onUpdateTask({
       id,
+      projectName: editProjectName.trim(),
       heading: editHeading.trim(),
       details: editDetails.trim(),
       timeTaken: parseFloat(editTime) || 0,
@@ -45,6 +50,39 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
 
   const taskAuthorForEdit = (id) => {
     return (tasks || []).find(task => task.id === id)?.userName;
+  };
+
+  const askCodeLocation = () => {
+    const answer = window.prompt('Where is the code? Choose one: Local, Dev, Pre, Prod', 'Prod');
+    if (answer === null) return null;
+
+    const normalized = CODE_LOCATIONS.find(location => (
+      location.toLowerCase() === answer.trim().toLowerCase()
+    ));
+
+    if (!normalized) {
+      alert('Please enter one of: Local, Dev, Pre, Prod.');
+      return null;
+    }
+
+    return normalized;
+  };
+
+  const sendTaskUpdate = async (task) => {
+    if (!onSendTaskUpdate) return;
+
+    const codeLocation = askCodeLocation();
+    if (!codeLocation) return;
+
+    setSendingWebhookId(task.id);
+    try {
+      await onSendTaskUpdate(task, codeLocation);
+      alert('Task update sent to Google Chat.');
+    } catch (error) {
+      alert(error.message || 'Failed to send task update.');
+    } finally {
+      setSendingWebhookId(null);
+    }
   };
 
   const getFormattedDate = (dateStr) => {
@@ -82,6 +120,7 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
   const filteredTasks = visibleTasks.filter(task => {
     const matchesSearch = 
       task.heading.toLowerCase().includes(searchText.toLowerCase()) ||
+      (task.projectName || '').toLowerCase().includes(searchText.toLowerCase()) ||
       task.details.toLowerCase().includes(searchText.toLowerCase());
       
     const matchesFilter = 
@@ -199,6 +238,17 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
                   /* INLINE EDIT MODE CONTAINER */
                   <div className="edit-form-wrapper">
                     <div className="form-group">
+                      <label style={{ fontSize: '0.75rem' }}>PROJECT</label>
+                      <input
+                        type="text"
+                        className="input-style"
+                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.88rem' }}
+                        value={editProjectName}
+                        onChange={(e) => setEditProjectName(e.target.value)}
+                        maxLength={40}
+                      />
+                    </div>
+                    <div className="form-group">
                       <label style={{ fontSize: '0.75rem' }}>HEADING</label>
                       <input
                         type="text"
@@ -255,7 +305,12 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
                   <>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       <div className="task-card-header">
-                        <h4 className="task-title">{task.heading}</h4>
+                        <div className="task-heading-stack">
+                          {task.projectName && (
+                            <span className="project-code-pill">{task.projectName}</span>
+                          )}
+                          <h4 className="task-title">{task.heading}</h4>
+                        </div>
                         <div className="task-meta-pills">
                           <span className={`meta-pill priority-${priorityClass}`}>{task.importLevel}</span>
                           {task.timeTaken > 0 && (
@@ -291,6 +346,22 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, currentUse
                             Logged by: <strong>{task.userName}</strong>
                           </div>
                         )}
+
+                        <button
+                          className="action-icon-btn send"
+                          onClick={() => sendTaskUpdate(task)}
+                          title="Send task update to Google Chat"
+                          disabled={sendingWebhookId === task.id}
+                        >
+                          {sendingWebhookId === task.id ? (
+                            <span className="mini-spinner"></span>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="m22 2-7 20-4-9-9-4Z"></path>
+                              <path d="M22 2 11 13"></path>
+                            </svg>
+                          )}
+                        </button>
 
                         <button 
                           className="action-icon-btn edit" 

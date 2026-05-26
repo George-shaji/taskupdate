@@ -940,6 +940,29 @@ textarea.input-style {
   gap: 1rem;
 }
 
+.task-heading-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.project-code-pill {
+  align-self: flex-start;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: var(--border-glass);
+  border-radius: 6px;
+  color: var(--color-primary-hover);
+  font-family: var(--font-heading);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  padding: 0.25rem 0.55rem;
+  overflow-wrap: anywhere;
+}
+
 .task-title {
   font-family: var(--font-heading);
   font-size: 1.25rem;
@@ -1053,6 +1076,11 @@ textarea.input-style {
   border-color: rgba(139, 92, 246, 0.3);
 }
 
+.action-icon-btn.send:hover {
+  color: var(--color-emerald);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
 .action-icon-btn.delete:hover {
   color: var(--color-crimson);
   border-color: rgba(239, 68, 68, 0.3);
@@ -1061,6 +1089,15 @@ textarea.input-style {
 .action-icon-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.mini-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(148, 163, 184, 0.25);
+  border-top-color: var(--color-emerald);
+  border-radius: 999px;
+  animation: spin 0.75s linear infinite;
 }
 
 /* Inline Edit Card styling */

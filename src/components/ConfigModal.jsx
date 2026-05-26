@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { verifyCloudConnection } from '../db/sheetDb';
 
 const APPS_SCRIPT_CODE = `// Google Apps Script - TaskUpdate Pro Backend (v3 with Login Users)
-const TASK_HEADERS = ['id', 'heading', 'details', 'timeTaken', 'importLevel', 'userName', 'createdAt', 'updatedAt'];
+const TASK_HEADERS = ['id', 'projectName', 'heading', 'details', 'timeTaken', 'importLevel', 'userName', 'createdAt', 'updatedAt'];
 const USER_HEADERS = ['id', 'userName', 'passwordHash', 'salt', 'role', 'createdAt', 'updatedAt'];
 
 function jsonResponse(payload) {
@@ -160,6 +160,7 @@ function doPost(e) {
       const now = new Date().toISOString();
       const taskData = {
         id: id,
+        projectName: postData.projectName || '',
         heading: postData.heading || '',
         details: postData.details || '',
         timeTaken: parseFloat(postData.timeTaken) || 0,
@@ -186,7 +187,7 @@ function doPost(e) {
       }
       
       const sheetHeaders = rows[0];
-      const fields = ['heading', 'details', 'timeTaken', 'importLevel', 'userName'];
+      const fields = ['projectName', 'heading', 'details', 'timeTaken', 'importLevel', 'userName'];
       fields.forEach(field => {
         if (postData[field] !== undefined) {
           const colIndex = sheetHeaders.indexOf(field) + 1;

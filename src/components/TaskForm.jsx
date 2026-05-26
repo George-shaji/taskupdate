@@ -16,6 +16,7 @@ const PRIORITIES = [
 ];
 
 export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
+  const [projectName, setProjectName] = useState('');
   const [heading, setHeading] = useState('');
   const [details, setDetails] = useState('');
   const [timeTaken, setTimeTaken] = useState('');
@@ -23,10 +24,11 @@ export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!heading.trim()) return;
+    if (!projectName.trim() || !heading.trim()) return;
 
     // Call state handler and include userName
     onAddTask({
+      projectName: projectName.trim(),
       heading: heading.trim(),
       details: details.trim(),
       timeTaken: parseFloat(timeTaken) || 0,
@@ -35,6 +37,7 @@ export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
     });
 
     // Reset form
+    setProjectName('');
     setHeading('');
     setDetails('');
     setTimeTaken('');
@@ -52,6 +55,20 @@ export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
         <p style={{ color: '#64748b', fontSize: '0.82rem', marginTop: '0.2rem' }}>
           Document your progress and sync with the team database.
         </p>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="task-project">PROJECT NAME *</label>
+        <input
+          id="task-project"
+          type="text"
+          className="input-style"
+          placeholder="e.g. CRCS072"
+          value={projectName}
+          onChange={(e) => setProjectName(e.target.value)}
+          required
+          maxLength={40}
+        />
       </div>
 
       <div className="form-group">
@@ -129,7 +146,7 @@ export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
         type="submit"
         className="btn-primary"
         style={{ marginTop: '0.5rem' }}
-        disabled={!heading.trim() || isSubmitting}
+        disabled={!projectName.trim() || !heading.trim() || isSubmitting}
       >
         {isSubmitting ? (
           <>

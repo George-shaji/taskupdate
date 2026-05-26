@@ -19,6 +19,7 @@ import {
 const USER_KEY = 'taskupdate_pro_user';
 const TASK_OWNERS_KEY = 'taskupdate_pro_task_owners';
 const USER_TASKS_KEY_PREFIX = 'taskupdate_pro_user_tasks_';
+const TASK_UPDATE_WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAQAwn4irvM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=sbJ4ndy4NBlktbnapj7cN6A9j7IIuGA8uAPpVCvE8X4';
 
 const getStoredTaskOwners = () => {
   try {
@@ -33,6 +34,7 @@ const taskFingerprint = (task) => {
   if (!task) return '';
 
   return [
+    task.projectName || '',
     task.heading || '',
     task.details || '',
     parseFloat(task.timeTaken) || 0,
@@ -181,6 +183,7 @@ export default function App() {
 
       return {
         id: t.id,
+        projectName: t.projectName || t.project || '',
         heading: t.heading || '',
         details: t.details || '',
         timeTaken: parseFloat(t.timeTaken) || 0,
@@ -484,6 +487,33 @@ export default function App() {
     }
   };
 
+  const handleSendTaskUpdate = async (task, codeLocation) => {
+    if (!task) return;
+
+    const projectName = (task.projectName || '').trim();
+    if (!projectName) {
+      throw new Error('Project name is required before sending the task update.');
+    }
+
+    const text = [
+      `Project : ${projectName}`,
+      `Task     : ${task.heading || ''}`,
+      `Status  : Pushed to ${codeLocation}`
+    ].join('\n');
+
+    const response = await fetch(TASK_UPDATE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8'
+      },
+      body: JSON.stringify({ text })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Webhook failed with status ${response.status}`);
+    }
+  };
+
   const handleLoginSuccess = (user) => {
     const normalizedUser = {
       name: (user.userName || user.name || '').trim(),
@@ -602,6 +632,7 @@ export default function App() {
             tasks={visibleTasks} 
             onUpdateTask={handleUpdateTask} 
             onDeleteTask={handleDeleteTask} 
+            onSendTaskUpdate={handleSendTaskUpdate}
             currentUser={currentUser}
           />
         </section>

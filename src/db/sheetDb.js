@@ -110,6 +110,7 @@ export const fetchCloudTasks = async (url) => {
   // could return userName as a timestamp and createdAt as the author, so repair it here.
   return (result.data || []).map(task => ({
     id: task.id,
+    projectName: task.projectName || task.project || '',
     heading: task.heading || '',
     details: task.details || '',
     timeTaken: parseFloat(task.timeTaken) || 0,
