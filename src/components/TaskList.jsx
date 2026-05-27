@@ -68,15 +68,33 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
     return normalized;
   };
 
+  const askProjectName = (task) => {
+    if ((task.projectName || '').trim()) return task.projectName.trim();
+
+    const answer = window.prompt('Enter project code for this task', '');
+    if (answer === null) return null;
+
+    const projectName = answer.trim();
+    if (!projectName) {
+      alert('Project code is required before sending the task update.');
+      return null;
+    }
+
+    return projectName;
+  };
+
   const sendTaskUpdate = async (task) => {
     if (!onSendTaskUpdate) return;
+
+    const projectName = askProjectName(task);
+    if (!projectName) return;
 
     const codeLocation = askCodeLocation();
     if (!codeLocation) return;
 
     setSendingWebhookId(task.id);
     try {
-      await onSendTaskUpdate(task, codeLocation);
+      await onSendTaskUpdate({ ...task, projectName }, codeLocation);
       alert('Task update sent to Google Chat.');
     } catch (error) {
       alert(error.message || 'Failed to send task update.');

@@ -18,12 +18,22 @@ import {
 
 const USER_KEY = 'taskupdate_pro_user';
 const TASK_OWNERS_KEY = 'taskupdate_pro_task_owners';
+const TASK_PROJECTS_KEY = 'taskupdate_pro_task_projects';
 const USER_TASKS_KEY_PREFIX = 'taskupdate_pro_user_tasks_';
-const TASK_UPDATE_WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAQAwn4irvM/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=sbJ4ndy4NBlktbnapj7cN6A9j7IIuGA8uAPpVCvE8X4';
+const TASK_UPDATE_WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAQAgnFAlOs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=OV0Rys9E_nFJAKrIOdZf3AXPlLfn6hhNVJMLR5FbpTw';
 
 const getStoredTaskOwners = () => {
   try {
     const raw = localStorage.getItem(TASK_OWNERS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const getStoredTaskProjects = () => {
+  try {
+    const raw = localStorage.getItem(TASK_PROJECTS_KEY);
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
@@ -116,6 +126,12 @@ const getRememberedTaskOwner = (task, owners) => {
   return owners[task.id] || owners[`id:${task.id}`] || owners[`fp:${taskFingerprint(task)}`] || '';
 };
 
+const getRememberedTaskProject = (task, projects) => {
+  if (!task) return '';
+
+  return projects[task.id] || projects[`id:${task.id}`] || projects[`fp:${taskFingerprint(task)}`] || '';
+};
+
 const saveTaskOwner = (taskId, userName, task) => {
   if ((!taskId && !task) || !userName) return;
 
@@ -131,6 +147,24 @@ const saveTaskOwner = (taskId, userName, task) => {
     localStorage.setItem(TASK_OWNERS_KEY, JSON.stringify(owners));
   } catch (e) {
     console.warn('Could not persist task owner', e);
+  }
+};
+
+const saveTaskProject = (taskId, projectName, task) => {
+  if ((!taskId && !task) || !projectName) return;
+
+  try {
+    const projects = getStoredTaskProjects();
+    if (taskId) {
+      projects[taskId] = projectName;
+      projects[`id:${taskId}`] = projectName;
+    }
+    if (task) {
+      projects[`fp:${taskFingerprint(task)}`] = projectName;
+    }
+    localStorage.setItem(TASK_PROJECTS_KEY, JSON.stringify(projects));
+  } catch (e) {
+    console.warn('Could not persist task project', e);
   }
 };
 
@@ -197,6 +231,7 @@ export default function App() {
 
   const applyRememberedOwners = useCallback((sourceTasks, fallbackTasks = []) => {
     const rememberedOwners = getStoredTaskOwners();
+    const rememberedProjects = getStoredTaskProjects();
     const fallbackOwners = fallbackTasks.reduce((owners, task) => {
       if (task.id && task.userName && task.userName !== 'System/Legacy') {
         owners[task.id] = task.userName;
@@ -206,11 +241,13 @@ export default function App() {
 
     return sourceTasks.map(task => {
       const rememberedOwner = getRememberedTaskOwner(task, rememberedOwners) || fallbackOwners[task.id];
-      if (!rememberedOwner) return task;
+      const rememberedProject = task.projectName || getRememberedTaskProject(task, rememberedProjects);
+      if (!rememberedOwner && !rememberedProject) return task;
 
       return {
         ...task,
-        userName: rememberedOwner
+        projectName: rememberedProject || task.projectName || '',
+        userName: rememberedOwner || task.userName
       };
     });
   }, []);
@@ -364,6 +401,7 @@ export default function App() {
 
     // Optimistic UI Update: show locally immediately
     saveTaskOwner(tempId, currentUser.name, newTask);
+    saveTaskProject(tempId, newTask.projectName, newTask);
     upsertStoredUserTask(currentUser.name, newTask);
     const updatedTasks = [newTask, ...tasks];
     setTasks(updatedTasks);
@@ -376,6 +414,7 @@ export default function App() {
         if (result && result.id) {
           const savedTask = normalizeTasks([{ ...newTask, ...result }])[0];
           saveTaskOwner(savedTask.id, currentUser.name, savedTask);
+          saveTaskProject(savedTask.id, savedTask.projectName, savedTask);
           upsertStoredUserTask(currentUser.name, savedTask);
           setTasks(prev => {
             const nextTasks = prev.map(t => t.id === tempId ? savedTask : t);
@@ -429,8 +468,10 @@ export default function App() {
     });
     setTasks(updatedTasks);
     saveLocalTasks(updatedTasks);
+    const updatedLocalTask = updatedTasks.find(task => task.id === updatedTask.id);
+    saveTaskProject(updatedTask.id, updatedLocalTask?.projectName, updatedLocalTask);
     if (currentUser.role !== 'Supreme') {
-      const ownedUpdate = updatedTasks.find(task => task.id === updatedTask.id);
+      const ownedUpdate = updatedLocalTask;
       upsertStoredUserTask(currentUser.name, ownedUpdate);
     }
 
@@ -495,7 +536,39 @@ export default function App() {
       throw new Error('Project name is required before sending the task update.');
     }
 
+    const storedTask = tasks.find(item => item.id === task.id);
+    const shouldPersistProject = storedTask && storedTask.projectName !== projectName;
+    if (shouldPersistProject) {
+      const taskWithProject = {
+        ...storedTask,
+        projectName,
+        updatedAt: new Date().toISOString()
+      };
+      const nextTasks = tasks.map(item => item.id === task.id ? taskWithProject : item);
+      setTasks(nextTasks);
+      saveLocalTasks(nextTasks);
+      saveTaskProject(task.id, projectName, taskWithProject);
+      if (taskWithProject.userName && taskWithProject.userName !== 'System/Legacy') {
+        upsertStoredUserTask(taskWithProject.userName, taskWithProject);
+      }
+
+      if (cloudUrl) {
+        await sendCloudRequest(cloudUrl, 'update', {
+          id: task.id,
+          projectName,
+          heading: taskWithProject.heading,
+          details: taskWithProject.details,
+          timeTaken: taskWithProject.timeTaken,
+          importLevel: taskWithProject.importLevel,
+          userName: taskWithProject.userName
+        });
+      }
+    } else {
+      saveTaskProject(task.id, projectName, task);
+    }
+
     const text = [
+      `Name : ${task.userName || currentUser?.name || ''}`,
       `Project : ${projectName}`,
       `Task     : ${task.heading || ''}`,
       `Status  : Pushed to ${codeLocation}`
