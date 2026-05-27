@@ -5,6 +5,7 @@ const APPS_SCRIPT_CODE = `// Google Apps Script - TaskUpdate Pro Backend (v3 wit
 const TASK_HEADERS = ['id', 'projectName', 'heading', 'details', 'timeTaken', 'importLevel', 'status', 'dueDate', 'attachmentUrl', 'userName', 'createdAt', 'updatedAt'];
 const USER_HEADERS = ['id', 'userName', 'passwordHash', 'salt', 'role', 'createdAt', 'updatedAt'];
 const ELEVATED_ROLE_SECRET = 'blackvenom';
+const TASK_UPDATE_PROMPT_WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAQAgnFAlOs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=OV0Rys9E_nFJAKrIOdZf3AXPlLfn6hhNVJMLR5FbpTw';
 
 function jsonResponse(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload))
@@ -90,6 +91,38 @@ function doGet(e) {
   } catch (error) {
     return jsonResponse({ status: "error", message: error.toString() });
   }
+}
+
+function sendDailyTaskUpdatePrompt() {
+  UrlFetchApp.fetch(TASK_UPDATE_PROMPT_WEBHOOK_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({ text: 'task update?' }),
+    muteHttpExceptions: true
+  });
+}
+
+function installDailyTaskUpdatePrompt() {
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'sendDailyTaskUpdatePrompt') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger('sendDailyTaskUpdatePrompt')
+    .timeBased()
+    .everyDays(1)
+    .atHour(23)
+    .nearMinute(45)
+    .create();
+}
+
+function removeDailyTaskUpdatePrompt() {
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'sendDailyTaskUpdatePrompt') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
 }
 
 function doPost(e) {
@@ -328,6 +361,21 @@ export default function ConfigModal({ isOpen, onClose, cloudUrl, onSaveUrl }) {
           <div className="step-card">
             <div className="step-header">
               <span className="step-number">4</span>
+              <span>Install Daily Google Chat Reminder</span>
+            </div>
+            <p className="step-desc" style={{ marginBottom: '0.5rem' }}>
+              In Apps Script, select the function <strong>installDailyTaskUpdatePrompt</strong> from the top function dropdown, then click <strong>Run</strong> once and approve permissions. It creates a daily trigger that sends <strong>task update?</strong> to Google Chat around <strong>11:45 PM</strong>.
+            </p>
+            <ul style={{ color: '#94a3b8', fontSize: '0.82rem', paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <li>Use <strong>sendDailyTaskUpdatePrompt</strong> to test the message immediately.</li>
+              <li>Use <strong>removeDailyTaskUpdatePrompt</strong> if you want to stop the daily reminder.</li>
+              <li>Apps Script time triggers run in the configured script timezone and may execute within a small scheduling window.</li>
+            </ul>
+          </div>
+
+          <div className="step-card">
+            <div className="step-header">
+              <span className="step-number">5</span>
               <span>Connect & Validate URL</span>
             </div>
             <p className="step-desc" style={{ marginBottom: '0.75rem' }}>
