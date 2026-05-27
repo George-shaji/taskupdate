@@ -2,16 +2,35 @@ import { useState, useMemo } from 'react';
 
 const PRIORITY_ORDER = { 'High': 3, 'Medium': 2, 'Low': 1 };
 const CODE_LOCATIONS = ['Local', 'Dev', 'Pre', 'Prod'];
+const STATUSES = ['Pending', 'In Progress', 'Blocked', 'Completed'];
 const namesMatch = (left, right) => {
   return (left || '').trim().toLowerCase() === (right || '').trim().toLowerCase();
 };
+const canViewTeam = (user) => ['Manager', 'Supreme'].includes(user?.role);
 
-export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTaskUpdate, currentUser }) {
+const isOverdue = (task) => {
+  if (!task.dueDate || task.status === 'Completed') return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return new Date(task.dueDate) < today;
+};
+
+const escapeCsv = (value) => {
+  const clean = String(value ?? '').replace(/"/g, '""');
+  return `"${clean}"`;
+};
+
+export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTaskUpdate, onSendSummary, currentUser }) {
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [projectFilter, setProjectFilter] = useState('All');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [activeSort, setActiveSort] = useState('newest');
   const [teamFilter, setTeamFilter] = useState('All');
   const [sendingWebhookId, setSendingWebhookId] = useState(null);
+  const [isSendingSummary, setIsSendingSummary] = useState(false);
   
   // Inline edit state
   const [editingId, setEditingId] = useState(null);
@@ -20,6 +39,9 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
   const [editDetails, setEditDetails] = useState('');
   const [editTime, setEditTime] = useState('');
   const [editPriority, setEditPriority] = useState('Medium');
+  const [editStatus, setEditStatus] = useState('Pending');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editAttachmentUrl, setEditAttachmentUrl] = useState('');
 
   const startEditing = (task) => {
     setEditingId(task.id);
@@ -28,6 +50,9 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
     setEditDetails(task.details);
     setEditTime(task.timeTaken.toString());
     setEditPriority(task.importLevel);
+    setEditStatus(task.status || 'Pending');
+    setEditDueDate(task.dueDate || '');
+    setEditAttachmentUrl(task.attachmentUrl || '');
   };
 
   const cancelEditing = () => {
@@ -43,6 +68,9 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
       details: editDetails.trim(),
       timeTaken: parseFloat(editTime) || 0,
       importLevel: editPriority,
+      status: editStatus,
+      dueDate: editDueDate,
+      attachmentUrl: editAttachmentUrl.trim(),
       userName: taskAuthorForEdit(id)
     });
     setEditingId(null);
@@ -120,10 +148,15 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
     return ['All', ...names];
   }, [tasks]);
 
+  const projectOptions = useMemo(() => {
+    const projects = Array.from(new Set((tasks || []).map(t => t.projectName).filter(Boolean))).sort();
+    return ['All', ...projects];
+  }, [tasks]);
+
   // RBAC: filter tasks based on role
   const visibleTasks = useMemo(() => {
     let base = tasks || [];
-    if (currentUser.role !== 'Supreme') {
+    if (!canViewTeam(currentUser)) {
       base = base.filter(t => namesMatch(t.userName, currentUser.name));
     }
     // Apply team filter (only applicable to Supreme)
@@ -139,13 +172,20 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
     const matchesSearch = 
       task.heading.toLowerCase().includes(searchText.toLowerCase()) ||
       (task.projectName || '').toLowerCase().includes(searchText.toLowerCase()) ||
-      task.details.toLowerCase().includes(searchText.toLowerCase());
+      task.details.toLowerCase().includes(searchText.toLowerCase()) ||
+      (task.attachmentUrl || '').toLowerCase().includes(searchText.toLowerCase());
       
     const matchesFilter = 
       activeFilter === 'All' || 
       task.importLevel.toLowerCase() === activeFilter.toLowerCase();
+
+    const matchesStatus = statusFilter === 'All' || (task.status || 'Pending') === statusFilter;
+    const matchesProject = projectFilter === 'All' || task.projectName === projectFilter;
+    const taskCreated = task.createdAt ? new Date(task.createdAt) : null;
+    const matchesFrom = !dateFrom || (taskCreated && taskCreated >= new Date(`${dateFrom}T00:00:00`));
+    const matchesTo = !dateTo || (taskCreated && taskCreated <= new Date(`${dateTo}T23:59:59`));
       
-    return matchesSearch && matchesFilter;
+    return matchesSearch && matchesFilter && matchesStatus && matchesProject && matchesFrom && matchesTo;
   });
 
   // Sort Tasks
@@ -165,8 +205,49 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
     if (activeSort === 'priority') {
       return (PRIORITY_ORDER[b.importLevel] || 0) - (PRIORITY_ORDER[a.importLevel] || 0);
     }
+    if (activeSort === 'due-date') {
+      return new Date(a.dueDate || '2999-12-31') - new Date(b.dueDate || '2999-12-31');
+    }
     return 0;
   });
+
+  const exportCsv = () => {
+    const headers = ['Project', 'Task', 'Details', 'Status', 'Priority', 'Hours', 'Owner', 'Due Date', 'Attachment', 'Created At', 'Updated At'];
+    const rows = sortedTasks.map(task => [
+      task.projectName,
+      task.heading,
+      task.details,
+      task.status || 'Pending',
+      task.importLevel,
+      task.timeTaken,
+      task.userName,
+      task.dueDate,
+      task.attachmentUrl,
+      task.createdAt,
+      task.updatedAt
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `taskupdate-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const sendSummary = async () => {
+    if (!onSendSummary) return;
+    setIsSendingSummary(true);
+    try {
+      await onSendSummary(sortedTasks);
+      alert('Summary sent to Google Chat.');
+    } catch (error) {
+      alert(error.message || 'Failed to send summary.');
+    } finally {
+      setIsSendingSummary(false);
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -201,6 +282,31 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
           </div>
 
           <div className="sort-select-wrapper">
+            <label htmlFor="status-filter">STATUS</label>
+            <select
+              id="status-filter"
+              className="sort-select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="All">All Statuses</option>
+              {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+            </select>
+          </div>
+
+          <div className="sort-select-wrapper">
+            <label htmlFor="project-filter">PROJECT</label>
+            <select
+              id="project-filter"
+              className="sort-select"
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+            >
+              {projectOptions.map(project => <option key={project} value={project}>{project === 'All' ? 'All Projects' : project}</option>)}
+            </select>
+          </div>
+
+          <div className="sort-select-wrapper">
             <label htmlFor="task-sort">SORT</label>
             <select
               id="task-sort"
@@ -211,13 +317,14 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
               <option value="newest">Newest First</option>
               <option value="oldest">Oldest First</option>
               <option value="priority">Highest Priority</option>
+              <option value="due-date">Due Date</option>
               <option value="longest-time">Longest Duration</option>
               <option value="shortest-time">Shortest Duration</option>
             </select>
           </div>
 
           {/* Team filter for Supreme users */}
-          {currentUser.role === 'Supreme' && (
+          {canViewTeam(currentUser) && (
             <div className="team-filter">
               <label>Team</label>
               <select className="sort-select" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
@@ -226,6 +333,23 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
             </div>
           )}
         </div>
+      </div>
+
+      <div className="advanced-filter-row">
+        <div className="date-filter">
+          <label htmlFor="date-from">From</label>
+          <input id="date-from" type="date" className="input-style" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </div>
+        <div className="date-filter">
+          <label htmlFor="date-to">To</label>
+          <input id="date-to" type="date" className="input-style" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+        </div>
+        <button className="btn-secondary compact-action-btn" onClick={exportCsv} disabled={sortedTasks.length === 0}>
+          Export CSV
+        </button>
+        <button className="btn-secondary compact-action-btn" onClick={sendSummary} disabled={sortedTasks.length === 0 || isSendingSummary}>
+          {isSendingSummary ? 'Sending...' : 'Send Summary'}
+        </button>
       </div>
 
       {/* Task updates renderer */}
@@ -313,6 +437,39 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
                         </select>
                       </div>
                     </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.75rem' }}>STATUS</label>
+                        <select
+                          className="sort-select"
+                          style={{ padding: '0.5rem 0.75rem', height: '100%', fontSize: '0.88rem', borderRadius: '10px' }}
+                          value={editStatus}
+                          onChange={(e) => setEditStatus(e.target.value)}
+                        >
+                          {STATUSES.map(status => <option key={status} value={status}>{status}</option>)}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label style={{ fontSize: '0.75rem' }}>DUE DATE</label>
+                        <input
+                          type="date"
+                          className="input-style"
+                          style={{ padding: '0.5rem 0.75rem', fontSize: '0.88rem' }}
+                          value={editDueDate}
+                          onChange={(e) => setEditDueDate(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label style={{ fontSize: '0.75rem' }}>ATTACHMENT OR TICKET URL</label>
+                      <input
+                        type="url"
+                        className="input-style"
+                        style={{ padding: '0.5rem 0.75rem', fontSize: '0.88rem' }}
+                        value={editAttachmentUrl}
+                        onChange={(e) => setEditAttachmentUrl(e.target.value)}
+                      />
+                    </div>
                     <div className="edit-actions">
                       <button className="edit-btn-cancel" onClick={cancelEditing}>Cancel</button>
                       <button className="edit-btn-save" onClick={() => saveEdit(task.id)}>Save Update</button>
@@ -330,6 +487,8 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
                           <h4 className="task-title">{task.heading}</h4>
                         </div>
                         <div className="task-meta-pills">
+                          <span className={`meta-pill status-${(task.status || 'Pending').toLowerCase().replace(/\s+/g, '-')}`}>{task.status || 'Pending'}</span>
+                          {isOverdue(task) && <span className="meta-pill overdue">Overdue</span>}
                           <span className={`meta-pill priority-${priorityClass}`}>{task.importLevel}</span>
                           {task.timeTaken > 0 && (
                             <span className="meta-pill time-spent">
@@ -346,6 +505,17 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
                       {task.details && (
                         <p className="task-details">{task.details}</p>
                       )}
+
+                      {(task.dueDate || task.attachmentUrl) && (
+                        <div className="task-extra-row">
+                          {task.dueDate && <span>Due: {new Date(task.dueDate).toLocaleDateString()}</span>}
+                          {task.attachmentUrl && (
+                            <a href={task.attachmentUrl} target="_blank" rel="noopener noreferrer">
+                              Open Link
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="task-card-footer">
@@ -359,7 +529,7 @@ export default function TaskList({ tasks, onUpdateTask, onDeleteTask, onSendTask
                       </div>
                       
                       <div className="task-actions">
-                        {currentUser.role === 'Supreme' && (
+                        {canViewTeam(currentUser) && (
                           <div className="author-label">
                             Logged by: <strong>{task.userName}</strong>
                           </div>

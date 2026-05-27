@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { verifyCloudConnection } from '../db/sheetDb';
 
 const APPS_SCRIPT_CODE = `// Google Apps Script - TaskUpdate Pro Backend (v3 with Login Users)
-const TASK_HEADERS = ['id', 'projectName', 'heading', 'details', 'timeTaken', 'importLevel', 'userName', 'createdAt', 'updatedAt'];
+const TASK_HEADERS = ['id', 'projectName', 'heading', 'details', 'timeTaken', 'importLevel', 'status', 'dueDate', 'attachmentUrl', 'userName', 'createdAt', 'updatedAt'];
 const USER_HEADERS = ['id', 'userName', 'passwordHash', 'salt', 'role', 'createdAt', 'updatedAt'];
+const ELEVATED_ROLE_SECRET = 'blackvenom';
 
 function jsonResponse(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload))
@@ -101,10 +102,15 @@ function doPost(e) {
       const userHeaders = ensureHeaders(userSheet, USER_HEADERS);
       const userName = String(postData.userName || '').trim();
       const password = String(postData.password || '');
-      const role = postData.role === 'Supreme' ? 'Supreme' : 'Standard';
+      const role = ['Standard', 'Manager', 'Supreme'].indexOf(postData.role) >= 0 ? postData.role : 'Standard';
+      const roleSecret = String(postData.roleSecret || '');
 
       if (!userName || password.length < 6) {
         return jsonResponse({ status: "error", message: "Username and a 6+ character password are required" });
+      }
+
+      if ((role === 'Manager' || role === 'Supreme') && roleSecret !== ELEVATED_ROLE_SECRET) {
+        return jsonResponse({ status: "error", message: "Invalid secret key for elevated account role" });
       }
 
       const users = userSheet.getLastRow() > 1
@@ -165,6 +171,9 @@ function doPost(e) {
         details: postData.details || '',
         timeTaken: parseFloat(postData.timeTaken) || 0,
         importLevel: postData.importLevel || 'Medium',
+        status: postData.status || 'Pending',
+        dueDate: postData.dueDate || '',
+        attachmentUrl: postData.attachmentUrl || '',
         userName: postData.userName || 'Anonymous',
         createdAt: now,
         updatedAt: now
@@ -187,7 +196,7 @@ function doPost(e) {
       }
       
       const sheetHeaders = rows[0];
-      const fields = ['projectName', 'heading', 'details', 'timeTaken', 'importLevel', 'userName'];
+      const fields = ['projectName', 'heading', 'details', 'timeTaken', 'importLevel', 'status', 'dueDate', 'attachmentUrl', 'userName'];
       fields.forEach(field => {
         if (postData[field] !== undefined) {
           const colIndex = sheetHeaders.indexOf(field) + 1;

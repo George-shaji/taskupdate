@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 const STATUS_ROWS = [
   { scenario: 'Success', code: '200' },
   { scenario: 'Created', code: '201' },
@@ -247,6 +249,28 @@ const RESPONSE_EXAMPLES = [
 const formatJson = (body) => JSON.stringify(body, null, 2);
 
 export default function ApiDocumentation({ onBack }) {
+  const [copiedKey, setCopiedKey] = useState('');
+
+  const copyText = async (key, text) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    window.setTimeout(() => setCopiedKey(''), 1200);
+  };
+
+  const requestExample = `POST /api/v1/tasks HTTP/1.1
+Content-Type: application/json
+username: george
+secret: your-secret
+api_token: your-api-token
+
+{
+  "projectName": "CRCS072",
+  "heading": "Deploy task update flow",
+  "details": "Validated webhook response handling.",
+  "status": "Completed",
+  "timeTaken": 1.5
+}`;
+
   return (
     <main className="docs-page">
       <section className="docs-hero">
@@ -280,6 +304,37 @@ export default function ApiDocumentation({ onBack }) {
         <div className="docs-stat">
           <strong>5xx</strong>
           <span>Server and gateway issues</span>
+        </div>
+      </section>
+
+      <section className="docs-section">
+        <div className="docs-section-heading">
+          <span>Request Contract</span>
+          <h3>Authentication Headers</h3>
+        </div>
+
+        <div className="docs-contract-grid">
+          <div className="docs-contract-card">
+            <h4>Required headers</h4>
+            <div className="docs-cases">
+              <span>Content-Type: application/json</span>
+              <span>username</span>
+              <span>secret</span>
+              <span>api_token</span>
+            </div>
+          </div>
+
+          <div className="docs-contract-card">
+            <h4>Recommended response shape</h4>
+            <p>Use `status`, `message`, and `error_code` consistently across all endpoints. Return data only when the client needs it.</p>
+          </div>
+        </div>
+
+        <div className="docs-code-panel">
+          <button className="copy-btn docs-copy-btn" onClick={() => copyText('request', requestExample)}>
+            {copiedKey === 'request' ? 'Copied' : 'Copy'}
+          </button>
+          <pre className="docs-code"><code>{requestExample}</code></pre>
         </div>
       </section>
 
@@ -345,7 +400,12 @@ export default function ApiDocumentation({ onBack }) {
               {example.noBody ? (
                 <div className="docs-no-body">No response body returned.</div>
               ) : (
-                <pre className="docs-code"><code>{formatJson(example.body)}</code></pre>
+                <div className="docs-code-panel">
+                  <button className="copy-btn docs-copy-btn" onClick={() => copyText(example.code, formatJson(example.body))}>
+                    {copiedKey === example.code ? 'Copied' : 'Copy'}
+                  </button>
+                  <pre className="docs-code"><code>{formatJson(example.body)}</code></pre>
+                </div>
               )}
             </article>
           ))}

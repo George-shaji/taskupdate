@@ -10,7 +10,8 @@ export default function LoginPage({ cloudUrl, onSaveUrl, onLogin, onRegister, is
     userName: '',
     password: '',
     confirmPassword: '',
-    role: 'Standard'
+    role: 'Standard',
+    roleSecret: ''
   });
 
   const updateField = (field, value) => {
@@ -55,7 +56,12 @@ export default function LoginPage({ cloudUrl, onSaveUrl, onLogin, onRegister, is
         return;
       }
 
-      onRegister({ userName, password, role: form.role });
+      if (['Manager', 'Supreme'].includes(form.role) && form.roleSecret !== 'blackvenom') {
+        setConnectionMessage({ type: 'error', text: 'Secret key is required for Manager and Supreme accounts.' });
+        return;
+      }
+
+      onRegister({ userName, password, role: form.role, roleSecret: form.roleSecret });
       return;
     }
 
@@ -152,7 +158,7 @@ export default function LoginPage({ cloudUrl, onSaveUrl, onLogin, onRegister, is
                 </div>
 
                 <div className="role-picker" role="group" aria-label="Choose account role">
-                  {['Standard', 'Supreme'].map(role => (
+                  {['Standard', 'Manager', 'Supreme'].map(role => (
                     <button
                       key={role}
                       type="button"
@@ -163,6 +169,21 @@ export default function LoginPage({ cloudUrl, onSaveUrl, onLogin, onRegister, is
                     </button>
                   ))}
                 </div>
+
+                {['Manager', 'Supreme'].includes(form.role) && (
+                  <div className="form-group">
+                    <label htmlFor="role-secret">SECRET KEY</label>
+                    <input
+                      id="role-secret"
+                      className="input-style"
+                      type="password"
+                      placeholder="Enter secret key"
+                      value={form.roleSecret}
+                      onChange={(event) => updateField('roleSecret', event.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+                )}
               </>
             )}
 

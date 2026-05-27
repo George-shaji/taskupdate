@@ -6,6 +6,8 @@ import DashboardStats from './components/DashboardStats';
 import ConfigModal from './components/ConfigModal';
 import LoginPage from './components/LoginPage';
 import ApiDocumentation from './components/ApiDocumentation';
+import ProjectDashboard from './components/ProjectDashboard';
+import ActivityLog from './components/ActivityLog';
 import { 
   getLocalTasks, 
   saveLocalTasks, 
@@ -21,6 +23,7 @@ const USER_KEY = 'taskupdate_pro_user';
 const TASK_OWNERS_KEY = 'taskupdate_pro_task_owners';
 const TASK_PROJECTS_KEY = 'taskupdate_pro_task_projects';
 const USER_TASKS_KEY_PREFIX = 'taskupdate_pro_user_tasks_';
+const ACTIVITY_LOG_KEY = 'taskupdate_pro_activity_log';
 const TASK_UPDATE_WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAQAgnFAlOs/messages?key=AIzaSyDdI0hCZtE6vySjMm-WEfRq3CPzqKqqsHI&token=OV0Rys9E_nFJAKrIOdZf3AXPlLfn6hhNVJMLR5FbpTw';
 
 const getStoredTaskOwners = () => {
@@ -49,7 +52,10 @@ const taskFingerprint = (task) => {
     task.heading || '',
     task.details || '',
     parseFloat(task.timeTaken) || 0,
-    task.importLevel || 'Medium'
+    task.importLevel || 'Medium',
+    task.status || 'Pending',
+    task.dueDate || '',
+    task.attachmentUrl || ''
   ].map(value => String(value).trim().toLowerCase()).join('|');
 };
 
@@ -121,6 +127,23 @@ const removeStoredUserTask = (userName, taskId) => {
   saveStoredUserTasks(userName, nextTasks);
 };
 
+const getStoredActivities = () => {
+  try {
+    const raw = localStorage.getItem(ACTIVITY_LOG_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveStoredActivities = (activities) => {
+  try {
+    localStorage.setItem(ACTIVITY_LOG_KEY, JSON.stringify((activities || []).slice(0, 80)));
+  } catch (e) {
+    console.warn('Could not persist activity log', e);
+  }
+};
+
 const getRememberedTaskOwner = (task, owners) => {
   if (!task) return '';
 
@@ -178,6 +201,12 @@ const isDateLike = (value) => {
   return !Number.isNaN(Date.parse(value));
 };
 
+const normalizeRole = (role) => {
+  return ['Standard', 'Manager', 'Supreme'].includes(role) ? role : 'Standard';
+};
+
+const canViewTeam = (user) => ['Manager', 'Supreme'].includes(user?.role);
+
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [cloudUrl, setCloudUrl] = useState('');
@@ -189,6 +218,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
   const [activePage, setActivePage] = useState('tasks');
+  const [activities, setActivities] = useState(() => getStoredActivities());
 
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -224,10 +254,28 @@ export default function App() {
         details: t.details || '',
         timeTaken: parseFloat(t.timeTaken) || 0,
         importLevel: t.importLevel || 'Medium',
+        status: t.status || 'Pending',
+        dueDate: t.dueDate || '',
+        attachmentUrl: t.attachmentUrl || t.link || '',
         userName: hasShiftedOwner ? t.createdAt : t.userName || t.user || 'System/Legacy',
         createdAt: createdAt || new Date().toISOString(),
         updatedAt: t.updatedAt || createdAt || new Date().toISOString()
       };
+    });
+  }, []);
+
+  const addActivity = useCallback((type, message) => {
+    const entry = {
+      id: `activity_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      message,
+      createdAt: new Date().toISOString()
+    };
+
+    setActivities(prev => {
+      const next = [entry, ...prev].slice(0, 80);
+      saveStoredActivities(next);
+      return next;
     });
   }, []);
 
@@ -255,7 +303,7 @@ export default function App() {
   }, []);
 
   const preserveCurrentUserTasks = useCallback((cloudTasks, previousTasks) => {
-    if (!currentUser || currentUser.role === 'Supreme') return cloudTasks;
+    if (!currentUser || canViewTeam(currentUser)) return cloudTasks;
 
     const rememberedOwners = getStoredTaskOwners();
     const storedUserTasks = getStoredUserTasks(currentUser.name).map(task => ({
@@ -324,7 +372,7 @@ export default function App() {
   // Load initial settings and local cache
   useEffect(() => {
     const cachedTasks = normalizeTasks(getLocalTasks());
-    const userTasks = currentUser && currentUser.role !== 'Supreme'
+    const userTasks = currentUser && !canViewTeam(currentUser)
       ? getStoredUserTasks(currentUser.name).map(task => ({ ...task, userName: currentUser.name }))
       : [];
 
@@ -366,7 +414,7 @@ export default function App() {
 
   const getVisibleTasks = useCallback((sourceTasks = tasks) => {
     if (!currentUser) return [];
-    if (currentUser.role === 'Supreme') return sourceTasks;
+    if (canViewTeam(currentUser)) return sourceTasks;
 
     const storedUserTasks = getStoredUserTasks(currentUser.name).map(task => ({
       ...task,
@@ -397,6 +445,9 @@ export default function App() {
     const newTask = {
       id: tempId,
       ...stamped,
+      status: stamped.status || 'Pending',
+      dueDate: stamped.dueDate || '',
+      attachmentUrl: stamped.attachmentUrl || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -408,6 +459,7 @@ export default function App() {
     const updatedTasks = [newTask, ...tasks];
     setTasks(updatedTasks);
     saveLocalTasks(updatedTasks);
+    addActivity('create', `${currentUser.name} created "${newTask.heading}" in ${newTask.projectName}.`);
 
     if (cloudUrl) {
       try {
@@ -463,6 +515,9 @@ export default function App() {
           ...updatedTask,
           // Preserve original author unless explicitly provided
           userName: updatedTask.userName || t.userName,
+          status: updatedTask.status || t.status || 'Pending',
+          dueDate: updatedTask.dueDate || '',
+          attachmentUrl: updatedTask.attachmentUrl || '',
           updatedAt: new Date().toISOString()
         };
       }
@@ -472,10 +527,11 @@ export default function App() {
     saveLocalTasks(updatedTasks);
     const updatedLocalTask = updatedTasks.find(task => task.id === updatedTask.id);
     saveTaskProject(updatedTask.id, updatedLocalTask?.projectName, updatedLocalTask);
-    if (currentUser.role !== 'Supreme') {
+    if (!canViewTeam(currentUser)) {
       const ownedUpdate = updatedLocalTask;
       upsertStoredUserTask(currentUser.name, ownedUpdate);
     }
+    addActivity('update', `${currentUser.name} updated "${updatedLocalTask?.heading || updatedTask.heading}".`);
 
     if (cloudUrl) {
       try {
@@ -512,9 +568,10 @@ export default function App() {
     const updatedTasks = tasks.filter(t => t.id !== id);
     setTasks(updatedTasks);
     saveLocalTasks(updatedTasks);
-    if (currentUser.role !== 'Supreme') {
+    if (!canViewTeam(currentUser)) {
       removeStoredUserTask(currentUser.name, id);
     }
+    addActivity('delete', `${currentUser.name} deleted "${originalTask.heading}".`);
 
     if (cloudUrl) {
       try {
@@ -562,6 +619,9 @@ export default function App() {
           details: taskWithProject.details,
           timeTaken: taskWithProject.timeTaken,
           importLevel: taskWithProject.importLevel,
+          status: taskWithProject.status,
+          dueDate: taskWithProject.dueDate,
+          attachmentUrl: taskWithProject.attachmentUrl,
           userName: taskWithProject.userName
         });
       }
@@ -573,7 +633,8 @@ export default function App() {
       `Name : ${task.userName || currentUser?.name || ''}`,
       `Project : ${projectName}`,
       `Task     : ${task.heading || ''}`,
-      `Status  : Pushed to ${codeLocation}`
+      `Status  : ${task.status || 'Pending'}`,
+      `Target  : Pushed to ${codeLocation}`
     ].join('\n');
 
     const response = await fetch(TASK_UPDATE_WEBHOOK_URL, {
@@ -587,12 +648,56 @@ export default function App() {
     if (!response.ok) {
       throw new Error(`Webhook failed with status ${response.status}`);
     }
+
+    addActivity('send', `${currentUser.name} pushed "${task.heading}" to ${codeLocation}.`);
+  };
+
+  const handleSendSummary = async (summaryTasks) => {
+    const source = summaryTasks || [];
+    const totalHours = source.reduce((sum, task) => sum + (parseFloat(task.timeTaken) || 0), 0);
+    const completed = source.filter(task => task.status === 'Completed').length;
+    const blocked = source.filter(task => task.status === 'Blocked').length;
+    const high = source.filter(task => task.importLevel === 'High').length;
+    const byProject = source.reduce((acc, task) => {
+      const project = task.projectName || 'Unassigned';
+      acc[project] = (acc[project] || 0) + 1;
+      return acc;
+    }, {});
+
+    const projectLines = Object.entries(byProject)
+      .slice(0, 8)
+      .map(([project, count]) => `- ${project}: ${count} task${count === 1 ? '' : 's'}`);
+
+    const text = [
+      `TaskUpdate Summary`,
+      `By: ${currentUser?.name || ''}`,
+      `Tasks: ${source.length}`,
+      `Hours: ${totalHours.toFixed(2)}`,
+      `Completed: ${completed}`,
+      `Blocked: ${blocked}`,
+      `High Priority: ${high}`,
+      projectLines.length ? `Projects:\n${projectLines.join('\n')}` : ''
+    ].filter(Boolean).join('\n');
+
+    const response = await fetch(TASK_UPDATE_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=UTF-8'
+      },
+      body: JSON.stringify({ text })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Webhook failed with status ${response.status}`);
+    }
+
+    addActivity('summary', `${currentUser.name} sent a summary for ${source.length} task updates.`);
   };
 
   const handleLoginSuccess = (user) => {
     const normalizedUser = {
       name: (user.userName || user.name || '').trim(),
-      role: user.role === 'Supreme' ? 'Supreme' : 'Standard'
+      role: normalizeRole(user.role)
     };
 
     if (!normalizedUser.name) return;
@@ -617,7 +722,7 @@ export default function App() {
     }
   };
 
-  const handleRegister = async ({ userName, password, role }) => {
+  const handleRegister = async ({ userName, password, role, roleSecret }) => {
     if (!cloudUrl) {
       setAuthMessage({ type: 'error', text: 'Connect your Google Sheet Web App URL before registering.' });
       return;
@@ -626,7 +731,7 @@ export default function App() {
     setIsAuthenticating(true);
     setAuthMessage(null);
     try {
-      const user = await registerCloudUser(cloudUrl, { userName, password, role });
+      const user = await registerCloudUser(cloudUrl, { userName, password, role, roleSecret });
       handleLoginSuccess(user);
     } catch (err) {
       setAuthMessage({ type: 'error', text: err.message || 'Registration failed.' });
@@ -653,6 +758,9 @@ export default function App() {
   }
 
   const visibleTasks = getVisibleTasks(tasks);
+  const visibleActivities = canViewTeam(currentUser)
+    ? activities
+    : activities.filter(item => item.message.toLowerCase().includes(currentUser.name.toLowerCase()));
 
   return (
     <div className="app-container">
@@ -701,11 +809,13 @@ export default function App() {
         <>
           {/* Metrics Dashboard */}
           <DashboardStats tasks={visibleTasks} />
+          <ProjectDashboard tasks={visibleTasks} />
 
           {/* Main Form + Grid Layout */}
           <main className="dashboard-grid">
-            <section>
+            <section className="left-rail-stack">
               <TaskForm onAddTask={handleAddTask} isSubmitting={isSubmitting} currentUser={currentUser} />
+              <ActivityLog activities={visibleActivities} />
             </section>
 
             <section>
@@ -714,6 +824,7 @@ export default function App() {
                 onUpdateTask={handleUpdateTask} 
                 onDeleteTask={handleDeleteTask} 
                 onSendTaskUpdate={handleSendTaskUpdate}
+                onSendSummary={handleSendSummary}
                 currentUser={currentUser}
               />
             </section>

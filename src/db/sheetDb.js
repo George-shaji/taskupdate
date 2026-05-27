@@ -115,6 +115,9 @@ export const fetchCloudTasks = async (url) => {
     details: task.details || '',
     timeTaken: parseFloat(task.timeTaken) || 0,
     importLevel: task.importLevel || 'Medium',
+    status: task.status || 'Pending',
+    dueDate: task.dueDate || '',
+    attachmentUrl: task.attachmentUrl || task.link || '',
     userName: isIsoDateLike(task.userName) && task.createdAt && !isIsoDateLike(task.createdAt)
       ? task.createdAt
       : task.userName || task.user || 'System/Legacy',

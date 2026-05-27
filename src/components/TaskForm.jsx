@@ -15,12 +15,17 @@ const PRIORITIES = [
   { label: 'High', value: 'High', className: 'high' }
 ];
 
+const STATUSES = ['Pending', 'In Progress', 'Blocked', 'Completed'];
+
 export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
   const [projectName, setProjectName] = useState('');
   const [heading, setHeading] = useState('');
   const [details, setDetails] = useState('');
   const [timeTaken, setTimeTaken] = useState('');
   const [importLevel, setImportLevel] = useState('Medium');
+  const [status, setStatus] = useState('Pending');
+  const [dueDate, setDueDate] = useState('');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -33,6 +38,9 @@ export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
       details: details.trim(),
       timeTaken: parseFloat(timeTaken) || 0,
       importLevel,
+      status,
+      dueDate,
+      attachmentUrl: attachmentUrl.trim(),
       userName: currentUser?.name || 'Anonymous'
     });
 
@@ -42,6 +50,9 @@ export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
     setDetails('');
     setTimeTaken('');
     setImportLevel('Medium');
+    setStatus('Pending');
+    setDueDate('');
+    setAttachmentUrl('');
   };
 
   const selectTimePreset = (val) => {
@@ -140,6 +151,44 @@ export default function TaskForm({ onAddTask, isSubmitting, currentUser }) {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="task-status">STATUS</label>
+        <select
+          id="task-status"
+          className="sort-select full-width-select"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          {STATUSES.map(item => (
+            <option key={item} value={item}>{item}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="task-due-date">DUE DATE</label>
+        <input
+          id="task-due-date"
+          type="date"
+          className="input-style"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+        />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="task-link">ATTACHMENT OR TICKET URL</label>
+        <input
+          id="task-link"
+          type="url"
+          className="input-style"
+          placeholder="https://..."
+          value={attachmentUrl}
+          onChange={(e) => setAttachmentUrl(e.target.value)}
+          maxLength={300}
+        />
       </div>
 
       <button
