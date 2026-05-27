@@ -1,4 +1,14 @@
-export default function AppHeader({ cloudUrl, isSyncing, lastSync, onOpenConfig, onManualSync, currentUser, onLogout }) {
+export default function AppHeader({
+  cloudUrl,
+  isSyncing,
+  lastSync,
+  onOpenConfig,
+  onManualSync,
+  currentUser,
+  onLogout,
+  activePage,
+  onNavigate
+}) {
   const getFormattedTime = (dateStr) => {
     if (!dateStr) return 'Never';
     try {
@@ -49,6 +59,13 @@ export default function AppHeader({ cloudUrl, isSyncing, lastSync, onOpenConfig,
         )}
 
         <div className="session-actions">
+          <button
+            className={`btn-secondary header-nav-btn ${activePage === 'docs' ? 'active' : ''}`}
+            onClick={() => onNavigate(activePage === 'docs' ? 'tasks' : 'docs')}
+          >
+            {activePage === 'docs' ? 'Dashboard' : 'API Docs'}
+          </button>
+
           <div className="session-chip" title={`${currentUser.role} workspace`}>
             <span className={`role-badge ${currentUser.role === 'Supreme' ? 'supreme' : 'standard'}`}></span>
             <span className="session-copy">

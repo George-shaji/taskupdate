@@ -5,6 +5,7 @@ import TaskList from './components/TaskList';
 import DashboardStats from './components/DashboardStats';
 import ConfigModal from './components/ConfigModal';
 import LoginPage from './components/LoginPage';
+import ApiDocumentation from './components/ApiDocumentation';
 import { 
   getLocalTasks, 
   saveLocalTasks, 
@@ -187,6 +188,7 @@ export default function App() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [authMessage, setAuthMessage] = useState(null);
+  const [activePage, setActivePage] = useState('tasks');
 
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -663,6 +665,8 @@ export default function App() {
         onManualSync={() => syncWithCloud(cloudUrl)}
         currentUser={currentUser}
         onLogout={handleLogout}
+        activePage={activePage}
+        onNavigate={setActivePage}
       />
 
       {/* Network Alert Notification */}
@@ -691,25 +695,31 @@ export default function App() {
         </div>
       )}
 
-      {/* Metrics Dashboard */}
-      <DashboardStats tasks={visibleTasks} />
+      {activePage === 'docs' ? (
+        <ApiDocumentation onBack={() => setActivePage('tasks')} />
+      ) : (
+        <>
+          {/* Metrics Dashboard */}
+          <DashboardStats tasks={visibleTasks} />
 
-      {/* Main Form + Grid Layout */}
-      <main className="dashboard-grid">
-        <section>
-          <TaskForm onAddTask={handleAddTask} isSubmitting={isSubmitting} currentUser={currentUser} />
-        </section>
+          {/* Main Form + Grid Layout */}
+          <main className="dashboard-grid">
+            <section>
+              <TaskForm onAddTask={handleAddTask} isSubmitting={isSubmitting} currentUser={currentUser} />
+            </section>
 
-        <section>
-          <TaskList 
-            tasks={visibleTasks} 
-            onUpdateTask={handleUpdateTask} 
-            onDeleteTask={handleDeleteTask} 
-            onSendTaskUpdate={handleSendTaskUpdate}
-            currentUser={currentUser}
-          />
-        </section>
-      </main>
+            <section>
+              <TaskList 
+                tasks={visibleTasks} 
+                onUpdateTask={handleUpdateTask} 
+                onDeleteTask={handleDeleteTask} 
+                onSendTaskUpdate={handleSendTaskUpdate}
+                currentUser={currentUser}
+              />
+            </section>
+          </main>
+        </>
+      )}
 
       {/* Setup configuration panel */}
       <ConfigModal 
