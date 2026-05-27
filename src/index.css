@@ -1022,8 +1022,6 @@ body::before {
   flex-direction: column;
   gap: 1.5rem;
   height: fit-content;
-  position: sticky;
-  top: 2rem;
 }
 
 .form-title {
